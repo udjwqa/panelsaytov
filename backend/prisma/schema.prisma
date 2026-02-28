@@ -1,0 +1,201 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model User {
+  id           String    @id @default(uuid())
+  username     String    @unique
+  passwordHash String
+  role         Role      @default(OPERATOR)
+  totpSecret   String?
+  totpEnabled  Boolean   @default(false)
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  sessions     Session[]
+  logs         Log[]
+  deploys      Deploy[]
+}
+
+enum Role {
+  ADMIN
+  OPERATOR
+}
+
+model Session {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  token     String   @unique
+  ip        String?
+  userAgent String?
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+}
+
+model Server {
+  id          String   @id @default(uuid())
+  name        String
+  ip          String
+  sshPort     Int      @default(22)
+  sshAuthType AuthType @default(KEY)
+  sshUser     String   @default("root")
+  sshPassword String?
+  sshKey      String?
+  provider    String?
+  location    String?
+  isSpare     Boolean  @default(false)
+  status      Status   @default(UNKNOWN)
+  lastPing    DateTime?
+  cpuUsage    Float?
+  ramUsage    Float?
+  diskUsage   Float?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  sites       Site[]
+}
+
+enum AuthType {
+  PASSWORD
+  KEY
+}
+
+enum Status {
+  ONLINE
+  OFFLINE
+  UNKNOWN
+  ERROR
+}
+
+model Domain {
+  id              String       @id @default(uuid())
+  domain          String       @unique
+  cloudflareZone  String?
+  cloudflareToken String?
+  type            DomainType   @default(PRIMARY)
+  status          DomainStatus @default(FREE)
+  sslExpiresAt    DateTime?
+  sslStatus       String?
+  lastDnsCheck    DateTime?
+  dnsResolvesTo   String?
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+  site            Site?        @relation("PrimaryDomain")
+  spareSites      Site[]       @relation("SpareDomains")
+}
+
+enum DomainType {
+  PRIMARY
+  SPARE
+}
+
+enum DomainStatus {
+  ACTIVE
+  FREE
+  ABUSED
+}
+
+model Site {
+  id              String     @id @default(uuid())
+  name            String
+  sourceType      SourceType @default(GIT)
+  repoUrl         String?
+  branch          String?    @default("main")
+  deployPath      String
+  stack           StackType  @default(AUTO)
+  detectedStack   String?
+  customScript    String?
+  envVars         Json?
+  serverId        String
+  server          Server     @relation(fields: [serverId], references: [id])
+  domainId        String?    @unique
+  domain          Domain?    @relation("PrimaryDomain", fields: [domainId], references: [id])
+  spareDomains    Domain[]   @relation("SpareDomains")
+  status          SiteStatus @default(UNKNOWN)
+  lastDeployAt    DateTime?
+  lastCheckAt     DateTime?
+  httpStatus      Int?
+  responseTime    Int?
+  autoRotation    Boolean    @default(false)
+  autoRotateAfter Int        @default(5)
+  port            Int?       @default(3000)
+  createdAt       DateTime   @default(now())
+  updatedAt       DateTime   @updatedAt
+  deploys         Deploy[]
+  logs            Log[]
+}
+
+enum SourceType {
+  GIT
+  ARCHIVE
+  PATH
+}
+
+enum StackType {
+  AUTO
+  PHP_LARAVEL
+  PHP_WORDPRESS
+  NODEJS
+  PYTHON_DJANGO
+  PYTHON_FASTAPI
+  DOCKER
+  STATIC
+  CUSTOM
+}
+
+enum SiteStatus {
+  ONLINE
+  OFFLINE
+  DEPLOYING
+  ERROR
+  UNKNOWN
+}
+
+model Deploy {
+  id         String       @id @default(uuid())
+  siteId     String
+  site       Site         @relation(fields: [siteId], references: [id])
+  userId     String
+  user       User         @relation(fields: [userId], references: [id])
+  serverId   String
+  domainId   String?
+  status     DeployStatus @default(PENDING)
+  steps      Json?
+  log        String?
+  duration   Int?
+  withSsl    Boolean      @default(true)
+  startedAt  DateTime     @default(now())
+  finishedAt DateTime?
+}
+
+enum DeployStatus {
+  PENDING
+  RUNNING
+  SUCCESS
+  FAILED
+  CANCELLED
+}
+
+model Log {
+  id        String   @id @default(uuid())
+  userId    String?
+  user      User?    @relation(fields: [userId], references: [id])
+  siteId    String?
+  site      Site?    @relation(fields: [siteId], references: [id])
+  action    String
+  target    String?
+  details   Json?
+  status    String?
+  ip        String?
+  createdAt DateTime @default(now())
+}
+
+model Setting {
+  id    String @id @default(uuid())
+  key   String @unique
+  value Json
+}
