@@ -7,6 +7,7 @@ import { Server as SocketServer } from 'socket.io';
 import { env } from './config/env';
 import authRoutes from './routes/auth';
 import settingsRoutes from './routes/settings';
+import serverRoutes from './routes/servers';
 
 const app = express();
 const httpServer = createServer(app);
@@ -33,6 +34,7 @@ app.get('/api/health', (_req, res) => {
 // Routes
 app.use('/api/auth', authRoutes);
 app.use('/api/settings', settingsRoutes);
+app.use('/api/servers', serverRoutes);
 
 // Socket.IO connection
 io.on('connection', (socket) => {
