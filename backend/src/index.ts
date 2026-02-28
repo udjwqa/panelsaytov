@@ -5,6 +5,8 @@ import cookieParser from 'cookie-parser';
 import { createServer } from 'http';
 import { Server as SocketServer } from 'socket.io';
 import { env } from './config/env';
+import authRoutes from './routes/auth';
+import settingsRoutes from './routes/settings';
 
 const app = express();
 const httpServer = createServer(app);
@@ -27,6 +29,10 @@ app.use(cookieParser());
 app.get('/api/health', (_req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
+
+// Routes
+app.use('/api/auth', authRoutes);
+app.use('/api/settings', settingsRoutes);
 
 // Socket.IO connection
 io.on('connection', (socket) => {
