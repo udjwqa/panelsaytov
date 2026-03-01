@@ -14,6 +14,7 @@ model User {
   role         Role      @default(OPERATOR)
   totpSecret   String?
   totpEnabled  Boolean   @default(false)
+  backupCodes  Json?
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt
   sessions     Session[]
@@ -127,6 +128,7 @@ model Site {
   updatedAt       DateTime   @updatedAt
   deploys         Deploy[]
   logs            Log[]
+  backups         Backup[]
 }
 
 enum SourceType {
@@ -192,6 +194,35 @@ model Log {
   status    String?
   ip        String?
   createdAt DateTime @default(now())
+}
+
+model Backup {
+  id          String       @id @default(uuid())
+  siteId      String
+  site        Site         @relation(fields: [siteId], references: [id])
+  serverId    String
+  type        BackupType   @default(MANUAL)
+  status      BackupStatus @default(PENDING)
+  filePath    String?
+  fileSize    BigInt?
+  dbIncluded  Boolean      @default(false)
+  dbType      String?
+  error       String?
+  createdAt   DateTime     @default(now())
+  completedAt DateTime?
+  expiresAt   DateTime?
+}
+
+enum BackupType {
+  AUTO
+  MANUAL
+}
+
+enum BackupStatus {
+  PENDING
+  RUNNING
+  SUCCESS
+  FAILED
 }
 
 model Setting {

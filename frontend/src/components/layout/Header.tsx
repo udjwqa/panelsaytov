@@ -1,12 +1,23 @@
 import { useState, useRef, useEffect } from 'react';
 import { Bell, ChevronDown, LogOut, User } from 'lucide-react';
+import { useQuery } from '@tanstack/react-query';
 import { useAuthStore } from '../../store/authStore';
 import { PanicButton } from './PanicButton';
+import api from '../../api/client';
 
 export function Header() {
   const { user, logout } = useAuthStore();
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
+
+  const { data: dashData } = useQuery({
+    queryKey: ['dashboard'],
+    queryFn: async () => {
+      const { data } = await api.get('/dashboard');
+      return data;
+    },
+    refetchInterval: 10000,
+  });
 
   useEffect(() => {
     function handleClickOutside(e: MouseEvent) {
@@ -22,7 +33,7 @@ export function Header() {
     <header className="sticky top-0 z-20 h-14 bg-bg border-b border-border flex items-center justify-between px-6">
       <div className="flex items-center gap-4">
         <span className="text-sm text-text-secondary">
-          0/0 сайтов онлайн
+          {dashData?.stats?.sites?.online || 0}/{dashData?.stats?.sites?.total || 0} сайтов онлайн
         </span>
       </div>
 

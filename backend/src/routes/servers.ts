@@ -6,6 +6,10 @@ import { logAction } from '../services/log.service';
 import { authMiddleware, AuthRequest } from '../middleware/auth';
 import { requireRole } from '../middleware/rbac';
 
+function paramId(req: AuthRequest): string {
+  return String(req.params.id);
+}
+
 const router = Router();
 router.use(authMiddleware);
 
@@ -47,7 +51,7 @@ router.get('/', async (_req: AuthRequest, res: Response) => {
 router.get('/:id', async (req: AuthRequest, res: Response) => {
   try {
     const server = await prisma.server.findUnique({
-      where: { id: req.params.id },
+      where: { id: paramId(req) },
       include: {
         sites: {
           select: { id: true, name: true, status: true, domain: { select: { domain: true } } },
@@ -117,7 +121,7 @@ router.post('/', requireRole('ADMIN'), async (req: AuthRequest, res: Response) =
 // PUT /api/servers/:id
 router.put('/:id', requireRole('ADMIN'), async (req: AuthRequest, res: Response) => {
   try {
-    const { id } = req.params;
+    const id = paramId(req);
     const { name, ip, sshPort, sshAuthType, sshUser, sshPassword, sshKey, provider, location, isSpare } = req.body;
 
     const existing = await prisma.server.findUnique({ where: { id } });
@@ -158,11 +162,11 @@ router.put('/:id', requireRole('ADMIN'), async (req: AuthRequest, res: Response)
 // DELETE /api/servers/:id
 router.delete('/:id', requireRole('ADMIN'), async (req: AuthRequest, res: Response) => {
   try {
-    const { id } = req.params;
+    const id = paramId(req);
     const server = await prisma.server.findUnique({
       where: { id },
       include: { _count: { select: { sites: true } } },
-    });
+    }) as any;
 
     if (!server) {
       res.status(404).json({ error: 'Сервер не найден' });
@@ -193,7 +197,7 @@ router.delete('/:id', requireRole('ADMIN'), async (req: AuthRequest, res: Respon
 // POST /api/servers/:id/ping
 router.post('/:id/ping', async (req: AuthRequest, res: Response) => {
   try {
-    const server = await prisma.server.findUnique({ where: { id: req.params.id } });
+    const server = await prisma.server.findUnique({ where: { id: paramId(req) } });
     if (!server) {
       res.status(404).json({ error: 'Сервер не найден' });
       return;
@@ -219,7 +223,7 @@ router.post('/:id/ping', async (req: AuthRequest, res: Response) => {
 // POST /api/servers/:id/test-ssh
 router.post('/:id/test-ssh', async (req: AuthRequest, res: Response) => {
   try {
-    const server = await prisma.server.findUnique({ where: { id: req.params.id } });
+    const server = await prisma.server.findUnique({ where: { id: paramId(req) } });
     if (!server) {
       res.status(404).json({ error: 'Сервер не найден' });
       return;
@@ -251,7 +255,7 @@ router.post('/:id/test-ssh', async (req: AuthRequest, res: Response) => {
 // GET /api/servers/:id/stats
 router.get('/:id/stats', async (req: AuthRequest, res: Response) => {
   try {
-    const server = await prisma.server.findUnique({ where: { id: req.params.id } });
+    const server = await prisma.server.findUnique({ where: { id: paramId(req) } });
     if (!server) {
       res.status(404).json({ error: 'Сервер не найден' });
       return;

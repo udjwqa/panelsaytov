@@ -8,6 +8,7 @@ import {
   Activity,
   FileText,
   Settings,
+  HardDrive,
 } from 'lucide-react';
 
 const navItems = [
@@ -16,6 +17,7 @@ const navItems = [
   { to: '/sites', icon: Globe, label: 'Сайты' },
   { to: '/domains', icon: Link, label: 'Домены' },
   { to: '/deploy', icon: Rocket, label: 'Деплой' },
+  { to: '/backups', icon: HardDrive, label: 'Бэкапы' },
   { to: '/monitoring', icon: Activity, label: 'Мониторинг' },
   { to: '/logs', icon: FileText, label: 'Логи' },
   { to: '/settings', icon: Settings, label: 'Настройки' },

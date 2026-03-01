@@ -5,6 +5,10 @@ import { logAction } from '../services/log.service';
 import { authMiddleware, AuthRequest } from '../middleware/auth';
 import { requireRole } from '../middleware/rbac';
 
+function paramId(req: AuthRequest): string {
+  return String(req.params.id);
+}
+
 const router = Router();
 
 // All settings routes require auth
@@ -87,7 +91,7 @@ router.post('/users', requireRole('ADMIN'), async (req: AuthRequest, res: Respon
 // PUT /api/settings/users/:id
 router.put('/users/:id', requireRole('ADMIN'), async (req: AuthRequest, res: Response) => {
   try {
-    const { id } = req.params;
+    const id = paramId(req);
     const { username, role, password } = req.body;
 
     const user = await prisma.user.findUnique({ where: { id } });
@@ -125,7 +129,7 @@ router.put('/users/:id', requireRole('ADMIN'), async (req: AuthRequest, res: Res
 // DELETE /api/settings/users/:id
 router.delete('/users/:id', requireRole('ADMIN'), async (req: AuthRequest, res: Response) => {
   try {
-    const { id } = req.params;
+    const id = paramId(req);
 
     if (id === req.user!.id) {
       res.status(400).json({ error: 'Нельзя удалить свой аккаунт' });

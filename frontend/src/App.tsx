@@ -3,6 +3,7 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { useAuthStore } from './store/authStore';
 import { Layout } from './components/layout/Layout';
 import { Login } from './pages/Login';
+import { Setup2FA } from './pages/Setup2FA';
 import { Dashboard } from './pages/Dashboard';
 import { Servers } from './pages/Servers';
 import { Sites } from './pages/Sites';
@@ -10,10 +11,11 @@ import { Domains } from './pages/Domains';
 import { Deploy } from './pages/Deploy';
 import { Monitoring } from './pages/Monitoring';
 import { Logs } from './pages/Logs';
+import { Backups } from './pages/Backups';
 import { SettingsPage } from './pages/SettingsPage';
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
-  const { isAuthenticated, isLoading } = useAuthStore();
+  const { isAuthenticated, isLoading, needsSetup2FA } = useAuthStore();
 
   if (isLoading) {
     return (
@@ -27,11 +29,16 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
     return <Navigate to="/login" replace />;
   }
 
+  // Redirect to 2FA setup if not configured
+  if (needsSetup2FA) {
+    return <Navigate to="/setup-2fa" replace />;
+  }
+
   return <>{children}</>;
 }
 
 function App() {
-  const { checkAuth, isAuthenticated } = useAuthStore();
+  const { checkAuth, isAuthenticated, needsSetup2FA } = useAuthStore();
 
   useEffect(() => {
     checkAuth();
@@ -43,7 +50,13 @@ function App() {
         <Route
           path="/login"
           element={
-            isAuthenticated ? <Navigate to="/" replace /> : <Login />
+            isAuthenticated && !needsSetup2FA ? <Navigate to="/" replace /> : <Login />
+          }
+        />
+        <Route
+          path="/setup-2fa"
+          element={
+            !isAuthenticated ? <Navigate to="/login" replace /> : <Setup2FA />
           }
         />
         <Route
@@ -59,6 +72,7 @@ function App() {
           <Route path="sites" element={<Sites />} />
           <Route path="domains" element={<Domains />} />
           <Route path="deploy" element={<Deploy />} />
+          <Route path="backups" element={<Backups />} />
           <Route path="monitoring" element={<Monitoring />} />
           <Route path="logs" element={<Logs />} />
           <Route path="settings" element={<SettingsPage />} />

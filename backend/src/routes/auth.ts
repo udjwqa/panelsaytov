@@ -9,13 +9,14 @@ import {
 } from '../services/auth.service';
 import { logAction } from '../services/log.service';
 import { authMiddleware, AuthRequest } from '../middleware/auth';
+import { setup2FA, confirm2FA, verify2FALogin } from '../services/totp.service';
 
 const router = Router();
 
 // POST /api/auth/login
 router.post('/login', async (req: AuthRequest, res: Response) => {
   try {
-    const { username, password } = req.body;
+    const { username, password, totpCode } = req.body;
 
     if (!username || !password) {
       res.status(400).json({ error: 'Введите логин и пароль' });
@@ -34,7 +35,57 @@ router.post('/login', async (req: AuthRequest, res: Response) => {
       return;
     }
 
-    // TODO: 2FA TOTP check (Phase 10)
+    // 2FA check
+    if (user.totpEnabled) {
+      if (!totpCode) {
+        // User needs to provide TOTP code
+        res.json({
+          requireTotp: true,
+          userId: user.id,
+        });
+        return;
+      }
+
+      const totpValid = await verify2FALogin(user.id, totpCode);
+      if (!totpValid) {
+        res.status(401).json({ error: 'Неверный код 2FA' });
+        return;
+      }
+    }
+
+    // If 2FA is not set up yet, user must set it up before proceeding
+    if (!user.totpEnabled) {
+      const ip = req.ip || req.socket.remoteAddress || '';
+      const userAgent = req.headers['user-agent'] || '';
+      const { accessToken, refreshToken } = await createSession(user.id, ip, userAgent);
+
+      res.cookie('refreshToken', refreshToken, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: 'lax',
+        maxAge: 7 * 24 * 60 * 60 * 1000,
+        path: '/api/auth',
+      });
+
+      await logAction({
+        userId: user.id,
+        action: 'login',
+        target: user.username,
+        ip,
+      });
+
+      res.json({
+        accessToken,
+        requireSetup2FA: true,
+        user: {
+          id: user.id,
+          username: user.username,
+          role: user.role,
+          totpEnabled: false,
+        },
+      });
+      return;
+    }
 
     const ip = req.ip || req.socket.remoteAddress || '';
     const userAgent = req.headers['user-agent'] || '';
@@ -194,6 +245,64 @@ router.post('/change-password', authMiddleware, async (req: AuthRequest, res: Re
     res.json({ success: true });
   } catch (error) {
     console.error('Change password error:', error);
+    res.status(500).json({ error: 'Ошибка сервера' });
+  }
+});
+
+// POST /api/auth/setup-2fa - generate QR code and secret for 2FA setup
+router.post('/setup-2fa', authMiddleware, async (req: AuthRequest, res: Response) => {
+  try {
+    const user = await prisma.user.findUnique({ where: { id: req.user!.id } });
+    if (!user) {
+      res.status(404).json({ error: 'Пользователь не найден' });
+      return;
+    }
+
+    if (user.totpEnabled) {
+      res.status(400).json({ error: '2FA уже включена' });
+      return;
+    }
+
+    const result = await setup2FA(user.id);
+
+    res.json({
+      qrCode: result.qrCode,
+      secret: result.secret,
+      backupCodes: result.backupCodes,
+    });
+  } catch (error) {
+    console.error('Setup 2FA error:', error);
+    res.status(500).json({ error: 'Ошибка сервера' });
+  }
+});
+
+// POST /api/auth/confirm-2fa - verify token and enable 2FA
+router.post('/confirm-2fa', authMiddleware, async (req: AuthRequest, res: Response) => {
+  try {
+    const { token } = req.body;
+
+    if (!token) {
+      res.status(400).json({ error: 'Введите код из приложения' });
+      return;
+    }
+
+    const confirmed = await confirm2FA(req.user!.id, token);
+
+    if (!confirmed) {
+      res.status(400).json({ error: 'Неверный код. Попробуйте ещё раз' });
+      return;
+    }
+
+    await logAction({
+      userId: req.user!.id,
+      action: 'settings_change',
+      target: '2fa_enabled',
+      ip: req.ip || '',
+    });
+
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Confirm 2FA error:', error);
     res.status(500).json({ error: 'Ошибка сервера' });
   }
 });
