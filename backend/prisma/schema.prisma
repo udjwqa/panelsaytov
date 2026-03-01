@@ -126,9 +126,11 @@ model Site {
   port            Int?       @default(3000)
   createdAt       DateTime   @default(now())
   updatedAt       DateTime   @updatedAt
-  deploys         Deploy[]
-  logs            Log[]
-  backups         Backup[]
+  deploys              Deploy[]
+  logs                 Log[]
+  backups              Backup[]
+  paymentGateway       PaymentGateway?      @relation("GatewaySite")
+  paymentGateways      SitePaymentGateway[]
 }
 
 enum SourceType {
@@ -229,4 +231,56 @@ model Setting {
   id    String @id @default(uuid())
   key   String @unique
   value Json
+}
+
+// === Payment Gateway ===
+
+enum PaymentGatewayType {
+  STRIPE
+  PAYPAL
+  CUSTOM
+}
+
+enum PaymentGatewayStatus {
+  ACTIVE
+  INACTIVE
+  SWITCHING
+  ERROR
+}
+
+model PaymentGateway {
+  id           String               @id @default(uuid())
+  name         String
+  type         PaymentGatewayType   @default(CUSTOM)
+  currentUrl   String
+  siteId       String?              @unique
+  site         Site?                @relation("GatewaySite", fields: [siteId], references: [id])
+  status       PaymentGatewayStatus @default(INACTIVE)
+  lastSwitchAt DateTime?
+  createdAt    DateTime             @default(now())
+  updatedAt    DateTime             @updatedAt
+  spareUrls    PaymentSpareUrl[]
+  linkedSites  SitePaymentGateway[]
+}
+
+model PaymentSpareUrl {
+  id               String         @id @default(uuid())
+  paymentGatewayId String
+  paymentGateway   PaymentGateway @relation(fields: [paymentGatewayId], references: [id], onDelete: Cascade)
+  url              String
+  createdAt        DateTime       @default(now())
+}
+
+model SitePaymentGateway {
+  id               String         @id @default(uuid())
+  siteId           String
+  site             Site           @relation(fields: [siteId], references: [id], onDelete: Cascade)
+  paymentGatewayId String
+  paymentGateway   PaymentGateway @relation(fields: [paymentGatewayId], references: [id], onDelete: Cascade)
+  envVarName       String         @default("PAYMENT_URL")
+  lastPropagatedAt DateTime?
+  lastPropagateOk  Boolean?
+  createdAt        DateTime       @default(now())
+
+  @@unique([siteId, paymentGatewayId])
 }

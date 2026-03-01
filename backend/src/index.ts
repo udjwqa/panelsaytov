@@ -15,6 +15,7 @@ import panicRoutes from './routes/panic';
 import logRoutes from './routes/logs';
 import dashboardRoutes from './routes/dashboard';
 import backupRoutes from './routes/backups';
+import paymentRoutes from './routes/payments';
 
 const app = express();
 const httpServer = createServer(app);
@@ -49,6 +50,7 @@ app.use('/api/panic', panicRoutes);
 app.use('/api/logs', logRoutes);
 app.use('/api/dashboard', dashboardRoutes);
 app.use('/api/backups', backupRoutes);
+app.use('/api/payments', paymentRoutes);
 
 // Initialize deploy queue worker
 import('./services/queue.service').then(() => {

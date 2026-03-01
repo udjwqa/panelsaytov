@@ -18,7 +18,7 @@ router.get('/', async (_req: AuthRequest, res: Response) => {
       include: {
         server: { select: { id: true, name: true, ip: true } },
         domain: { select: { id: true, domain: true, sslExpiresAt: true } },
-        _count: { select: { deploys: true } },
+        _count: { select: { deploys: true, paymentGateways: true } },
       },
       orderBy: { createdAt: 'asc' },
     });

@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Plus, Trash2, Globe, ExternalLink, RefreshCw, ArrowRightLeft, LayoutGrid } from 'lucide-react';
+import { Plus, Trash2, Globe, ExternalLink, RefreshCw, ArrowRightLeft, LayoutGrid, CreditCard } from 'lucide-react';
 import api from '../api/client';
 import { Button } from '../components/ui/Button';
 import { StatusDot } from '../components/ui/StatusDot';
@@ -25,7 +25,7 @@ interface Site {
   domainId: string | null;
   server: { id: string; name: string; ip: string } | null;
   domain: { id: string; domain: string; sslExpiresAt: string | null } | null;
-  _count: { deploys: number };
+  _count: { deploys: number; paymentGateways: number };
   createdAt: string;
 }
 
@@ -262,7 +262,13 @@ export function Sites() {
                   </td>
                   <td className="px-4 py-3">
                     <span className="text-text font-medium">{site.name}</span>
-                    {site.autoRotation && <Badge variant="info" >Авторотация</Badge>}
+                    {site.autoRotation && <Badge variant="info">Авторотация</Badge>}
+                    {site._count.paymentGateways > 0 && (
+                      <Badge variant="warning">
+                        <CreditCard className="w-3 h-3 inline mr-1" />
+                        {site._count.paymentGateways}
+                      </Badge>
+                    )}
                   </td>
                   <td className="px-4 py-3">
                     {site.domain ? (

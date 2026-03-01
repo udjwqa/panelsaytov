@@ -13,6 +13,7 @@ import { Monitoring } from './pages/Monitoring';
 import { Logs } from './pages/Logs';
 import { Backups } from './pages/Backups';
 import { SettingsPage } from './pages/SettingsPage';
+import { Payments } from './pages/Payments';
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { isAuthenticated, isLoading, needsSetup2FA } = useAuthStore();
@@ -71,6 +72,7 @@ function App() {
           <Route path="servers" element={<Servers />} />
           <Route path="sites" element={<Sites />} />
           <Route path="domains" element={<Domains />} />
+          <Route path="payments" element={<Payments />} />
           <Route path="deploy" element={<Deploy />} />
           <Route path="backups" element={<Backups />} />
           <Route path="monitoring" element={<Monitoring />} />

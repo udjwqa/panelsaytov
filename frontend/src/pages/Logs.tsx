@@ -35,6 +35,13 @@ const actionLabels: Record<string, { label: string; variant: 'success' | 'danger
   settings_change: { label: 'Настройки', variant: 'info' },
   login: { label: 'Вход', variant: 'default' },
   logout: { label: 'Выход', variant: 'default' },
+  payment_create: { label: 'Платёжка создана', variant: 'success' },
+  payment_update: { label: 'Платёжка обновлена', variant: 'info' },
+  payment_delete: { label: 'Платёжка удалена', variant: 'danger' },
+  payment_link_site: { label: 'Сайт привязан', variant: 'info' },
+  payment_unlink_site: { label: 'Сайт отвязан', variant: 'warning' },
+  payment_switch_url: { label: 'Смена URL платёжки', variant: 'warning' },
+  payment_retry_propagation: { label: 'Повтор пропагации', variant: 'info' },
 };
 
 export function Logs() {
