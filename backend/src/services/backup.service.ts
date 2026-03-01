@@ -24,11 +24,11 @@ interface BackupResult {
  */
 async function detectDatabase(ssh: NodeSSH, deployPath: string): Promise<{ type: 'mysql' | 'postgresql' | null; name?: string; user?: string; password?: string; host?: string }> {
   // Check for .env file (Laravel, Node.js, Django, etc.)
-  const envResult = await ssh.execCommand(`cat ${deployPath}/.env 2>/dev/null`);
+  const envResult = await ssh.execCommand(`cat "${deployPath}/.env" 2>/dev/null`);
   if (envResult.stdout) {
     const envContent = envResult.stdout;
 
-    // MySQL detection
+    // MySQL detection — individual vars (Laravel-style)
     const mysqlMatch = envContent.match(/DB_CONNECTION=mysql/);
     if (mysqlMatch) {
       const dbName = envContent.match(/DB_DATABASE=(\S+)/)?.[1];
@@ -38,19 +38,31 @@ async function detectDatabase(ssh: NodeSSH, deployPath: string): Promise<{ type:
       return { type: 'mysql', name: dbName, user: dbUser, password: dbPass, host: dbHost };
     }
 
-    // PostgreSQL detection
-    const pgMatch = envContent.match(/DB_CONNECTION=pgsql/) || envContent.match(/DATABASE_URL=postgres/);
-    if (pgMatch) {
+    // MySQL detection — DATABASE_URL=mysql:// format
+    const mysqlUrlMatch = envContent.match(/(?:DATABASE_URL|MYSQL_URL)=["']?mysql:\/\/([^:]+):([^@]+)@([^/]+)\/([^?"'\s]+)/);
+    if (mysqlUrlMatch) {
+      return { type: 'mysql', user: mysqlUrlMatch[1], password: mysqlUrlMatch[2], host: mysqlUrlMatch[3], name: mysqlUrlMatch[4] };
+    }
+
+    // PostgreSQL detection — individual vars (Laravel-style)
+    const pgIndividual = envContent.match(/DB_CONNECTION=pgsql/);
+    if (pgIndividual) {
       const dbName = envContent.match(/DB_DATABASE=(\S+)/)?.[1];
       const dbUser = envContent.match(/DB_USERNAME=(\S+)/)?.[1];
       const dbPass = envContent.match(/DB_PASSWORD=(\S+)/)?.[1];
       const dbHost = envContent.match(/DB_HOST=(\S+)/)?.[1] || 'localhost';
       return { type: 'postgresql', name: dbName, user: dbUser, password: dbPass, host: dbHost };
     }
+
+    // PostgreSQL detection — DATABASE_URL format (prisma, django, node.js)
+    const dbUrlMatch = envContent.match(/DATABASE_URL=["']?postgres(?:ql)?:\/\/([^:]+):([^@]+)@([^/]+)\/([^?"'\s]+)/);
+    if (dbUrlMatch) {
+      return { type: 'postgresql', user: dbUrlMatch[1], password: dbUrlMatch[2], host: dbUrlMatch[3], name: dbUrlMatch[4] };
+    }
   }
 
   // Check for wp-config.php (WordPress)
-  const wpResult = await ssh.execCommand(`cat ${deployPath}/wp-config.php 2>/dev/null`);
+  const wpResult = await ssh.execCommand(`cat "${deployPath}/wp-config.php" 2>/dev/null`);
   if (wpResult.stdout) {
     const dbName = wpResult.stdout.match(/define\(\s*'DB_NAME'\s*,\s*'([^']+)'/)?.[1];
     const dbUser = wpResult.stdout.match(/define\(\s*'DB_USER'\s*,\s*'([^']+)'/)?.[1];
@@ -94,43 +106,72 @@ export async function runBackup(backupId: string): Promise<void> {
     });
 
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-    const remoteBackupName = `backup-${site.name}-${timestamp}`;
+    const safeName = site.name.replace(/[^a-zA-Z0-9_-]/g, '_');
+    const remoteBackupName = `backup-${safeName}-${timestamp}`;
     const remoteTmpDir = `/tmp/${remoteBackupName}`;
 
     // Create temp directory on server
-    await ssh.execCommand(`mkdir -p ${remoteTmpDir}`);
+    await ssh.execCommand(`mkdir -p "${remoteTmpDir}"`);
 
     // Detect and dump database
     const db = await detectDatabase(ssh, site.deployPath);
     let dbIncluded = false;
     let dbType: string | null = null;
+    console.log(`[Backup] DB detection: type=${db.type}, name=${db.name}, host=${db.host}, user=${db.user}`);
 
     if (db.type === 'mysql' && db.name) {
       const passFlag = db.password ? `-p'${db.password}'` : '';
-      const dumpCmd = `mysqldump -h ${db.host} -u ${db.user} ${passFlag} ${db.name} > ${remoteTmpDir}/database.sql 2>/dev/null`;
+      const dumpCmd = `mysqldump -h ${db.host} -u ${db.user} ${passFlag} ${db.name} > "${remoteTmpDir}/database.sql" 2>/dev/null`;
       const dumpResult = await ssh.execCommand(dumpCmd);
-      if (dumpResult.code === 0) {
-        dbIncluded = true;
-        dbType = 'mysql';
+      if (dumpResult.code === 0 || dumpResult.code === null) {
+        const checkSize = await ssh.execCommand(`wc -c < "${remoteTmpDir}/database.sql" 2>/dev/null`);
+        const size = parseInt(checkSize.stdout.trim()) || 0;
+        if (size > 0) {
+          dbIncluded = true;
+          dbType = 'mysql';
+        }
       }
     } else if (db.type === 'postgresql' && db.name) {
-      const pgEnv = db.password ? `PGPASSWORD='${db.password}'` : '';
-      const dumpCmd = `${pgEnv} pg_dump -h ${db.host || 'localhost'} -U ${db.user} ${db.name} > ${remoteTmpDir}/database.sql 2>/dev/null`;
-      const dumpResult = await ssh.execCommand(dumpCmd);
-      if (dumpResult.code === 0) {
-        dbIncluded = true;
-        dbType = 'postgresql';
+      // Check if pg_dump is available
+      const pgDumpCheck = await ssh.execCommand('which pg_dump 2>/dev/null');
+      if (pgDumpCheck.stdout.trim()) {
+        let dumpCmd: string;
+        const isRemote = db.host && db.host !== 'localhost' && db.host !== '127.0.0.1';
+        if (isRemote) {
+          // Cloud/remote DB — use full connection URL with pg_dump --dbname
+          const connUrl = `postgresql://${db.user}:${db.password}@${db.host}/${db.name}?sslmode=require`;
+          dumpCmd = `pg_dump --dbname='${connUrl}' > "${remoteTmpDir}/database.sql"`;
+        } else {
+          const pgEnv = db.password ? `PGPASSWORD='${db.password}'` : '';
+          dumpCmd = `${pgEnv} pg_dump -h ${db.host || 'localhost'} -U ${db.user} ${db.name} > "${remoteTmpDir}/database.sql" 2>/dev/null`;
+        }
+        console.log(`[Backup] pg_dump cmd: ${dumpCmd.substring(0, 80)}...`);
+        const dumpResult = await ssh.execCommand(dumpCmd);
+        console.log(`[Backup] pg_dump result: code=${dumpResult.code}, stderr=${dumpResult.stderr?.substring(0, 200)}`);
+        if (dumpResult.code === 0 || dumpResult.code === null) {
+          // node-ssh may return null code on success
+          const checkSize = await ssh.execCommand(`wc -c < "${remoteTmpDir}/database.sql" 2>/dev/null`);
+          const size = parseInt(checkSize.stdout.trim()) || 0;
+          if (size > 0) {
+            dbIncluded = true;
+            dbType = 'postgresql';
+            console.log(`[Backup] DB dump successful: ${size} bytes`);
+          }
+        }
       }
     }
 
     // Archive site files
-    await ssh.execCommand(
-      `tar -czf ${remoteTmpDir}/files.tar.gz -C ${path.dirname(site.deployPath)} ${path.basename(site.deployPath)} 2>/dev/null`
+    const archiveResult = await ssh.execCommand(
+      `tar -czf "${remoteTmpDir}/files.tar.gz" -C "${path.dirname(site.deployPath)}" "${path.basename(site.deployPath)}" 2>/dev/null`
     );
+    if (archiveResult.code !== 0 && archiveResult.code !== null) {
+      console.error(`[Backup] tar archive failed: ${archiveResult.stderr}`);
+    }
 
     // Create final archive
     const remoteArchive = `/tmp/${remoteBackupName}.tar.gz`;
-    await ssh.execCommand(`tar -czf ${remoteArchive} -C /tmp ${remoteBackupName}`);
+    await ssh.execCommand(`tar -czf "${remoteArchive}" -C /tmp "${remoteBackupName}"`);
 
     // Download to local
     await ensureBackupDir();
@@ -141,7 +182,7 @@ export async function runBackup(backupId: string): Promise<void> {
     const stat = await fs.stat(localPath);
 
     // Clean up remote temp files
-    await ssh.execCommand(`rm -rf ${remoteTmpDir} ${remoteArchive}`);
+    await ssh.execCommand(`rm -rf "${remoteTmpDir}" "${remoteArchive}"`);
 
     // Calculate expiry (default 30 days)
     const settings = await getBackupSettings();
